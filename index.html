@@ -2204,14 +2204,15 @@ function getPosterChampionPath(champ){
   return path;
 }
 function escHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-// Estimate visual width in CJK-character units (CJK ≈ 1 unit, ASCII ≈ 0.7).
-// 0.7 is intentionally pessimistic — Microsoft YaHei Bold uppercase + html2canvas
-// renders wider than SF Pro Display. Better to err small than overflow.
+// Estimate visual width in CJK-character units (CJK ≈ 1 unit, ASCII ≈ 0.85).
+// 0.85 over-estimates ASCII on purpose: bold uppercase Latin (esp. M/W, and the
+// system-font fallback used in the poster) renders ~0.77/char, so 0.85 leaves a
+// ~10% safety margin — the champion name never overflows (e.g. GERMANY/ENGLAND).
 function posterVisualWidth(s){
   var w=0;
   for(var i=0;i<s.length;i++){
     var c=s.charCodeAt(i);
-    w += (c>=0x4E00 && c<=0x9FFF) ? 1 : 0.7;
+    w += (c>=0x4E00 && c<=0x9FFF) ? 1 : 0.85;
   }
   return w;
 }
