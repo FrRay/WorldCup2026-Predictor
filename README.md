@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://gmliangjz.github.io/WorldCup2026/"><img src="https://img.shields.io/badge/demo-live-success?style=flat-square"></a>
+  <a href="https://gmliangjz.github.io/WorldCup2026-Predictor/"><img src="https://img.shields.io/badge/demo-live-success?style=flat-square"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
   <img src="https://img.shields.io/badge/build-single--file-orange?style=flat-square">
   <img src="https://img.shields.io/badge/i18n-English%20%2B%20中文-purple?style=flat-square">
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="https://gmliangjz.github.io/WorldCup2026/"><b>🌐 Live Demo</b></a> ·
+  <a href="https://gmliangjz.github.io/WorldCup2026-Predictor/"><b>🌐 Live Demo</b></a> ·
   <a href="#english">English</a> ·
   <a href="#中文">中文</a>
 </p>
@@ -72,14 +72,14 @@ A single-file HTML simulator for the 2026 FIFA World Cup. Predict from the group
 
 ```bash
 # 1. Clone
-git clone https://github.com/gmliangjz/WorldCup2026.git
+git clone https://github.com/gmliangjz/WorldCup2026-Predictor.git
 
 # 2. Open index.html, or serve it statically
-cd WorldCup2026
+cd WorldCup2026-Predictor
 python -m http.server 8000   # or: npx serve
 ```
 
-Or just open the **[Live Demo](https://gmliangjz.github.io/WorldCup2026/)**.
+Or just open the **[Live Demo](https://gmliangjz.github.io/WorldCup2026-Predictor/)**.
 
 ### 🛠 Tech Stack
 
@@ -202,14 +202,14 @@ MIT — see [LICENSE](LICENSE). Third-party assets (flags, photos, taglines): [N
 
 ```bash
 # 1. 克隆
-git clone https://github.com/gmliangjz/WorldCup2026.git
+git clone https://github.com/gmliangjz/WorldCup2026-Predictor.git
 
 # 2. 双击 index.html，或用任意静态服务器
-cd WorldCup2026
+cd WorldCup2026-Predictor
 python -m http.server 8000   # 或：npx serve
 ```
 
-或直接访问 **[Live Demo](https://gmliangjz.github.io/WorldCup2026/)**。
+或直接访问 **[Live Demo](https://gmliangjz.github.io/WorldCup2026-Predictor/)**。
 
 ### 🛠 技术栈
 
