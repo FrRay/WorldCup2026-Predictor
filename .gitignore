@@ -10,11 +10,12 @@ desktop.ini
 *.swo
 *~
 
-# Node (if a build step is ever added)
+# Node
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 .pnpm-debug.log*
+server/package-lock.json
 
 # Build output
 dist/

@@ -227,6 +227,8 @@ body.dark .ctrl-icon:hover{background:rgba(255,255,255,0.06);color:var(--ink-dar
 .ctrl-icon{width:40px;height:40px;border-radius:50%;background:transparent;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;color:var(--ink-medium);transition:all 0.2s;position:relative;font-family:inherit;padding:0}
 .ctrl-icon:hover{background:var(--bg-soft);color:var(--ink-dark)}
 .ctrl-icon.lang{font-weight:700;font-size:13px}
+.server-dot{width:10px;height:10px;border-radius:50%;background:var(--ink-fade);margin:0 2px;transition:background 0.4s;flex-shrink:0}
+.server-dot.on{background:var(--accent-success);box-shadow:0 0 6px rgba(5,150,105,0.4)}
 .ctrl-icon.music::before{content:'';width:0;height:0;border-style:solid;border-width:6px 0 6px 10px;border-color:transparent transparent transparent var(--ink-medium);margin-left:3px;transition:all 0.2s}
 .ctrl-icon.music:hover::before{border-left-color:var(--ink-dark)}
 .ctrl-icon.music.playing{background:var(--ink-dark)}
@@ -511,6 +513,7 @@ body.view-mode .mode-row{margin:18px 0 24px!important}
 <button class="ctrl-icon" id="skipBtn" onclick="skipSong()" title="Skip track">⏭</button>
 <button class="ctrl-icon music" id="musicBtn" onclick="toggleMusic()" title="Play / Pause"></button>
 <button class="ctrl-icon lang" id="langBtn" onclick="toggleLang()" title="Language / 语言">EN</button>
+<span class="server-dot" id="serverDot" title="Server status"></span>
 <button class="ctrl-icon" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
 </div>
 <audio id="bgMusic" preload="none"></audio>
@@ -784,14 +787,30 @@ var R16P=[["R2","R5"],["R1","R3"],["R4","R6"],["R7","R8"],["R11","R12"],["R9","R
 var QFP=[["L1","L2"],["L5","L6"],["L3","L4"],["L7","L8"]];var SFP=[["Q1","Q2"],["Q3","Q4"]];
 var tab="groups",expG=null,gm={},ko={},slog=[],playMode=localStorage.getItem("wc26_play_mode")||"normal";
 var lastCelebratedChamp=null; // tracks last celebrated champion to prevent repeat confetti
+// ─── Backend API detection ───
+// Detects whether a backend is available. Auto-detects when served from same origin
+// (non-GitHub-Pages), or can be set explicitly via ?api= URL parameter.
+var API_BASE=(function(){
+  var params=new URLSearchParams(location.search);
+  if(params.get("api"))return params.get("api");
+  if(location.hostname==="localhost"||location.hostname==="127.0.0.1")return"/api";
+  return null;
+})();
 var TEAM_ORDER={};(function(){var n=1;for(var g in GD){for(var i=0;i<GD[g].length;i++)TEAM_ORDER[GD[g][i]]=n++;}})();
 function initGM(){var g={};for(var k in GD){var ts=GD[k];var pp=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]];g[k]=[];for(var p=0;p<pp.length;p++)g[k].push({h:ts[pp[p][0]],a:ts[pp[p][1]],hs:"",as:"",hg:[],ag:[]});}return g;}
 gm=initGM();
 // localStorage restore
-function saveState(){if(isViewMode)return;try{localStorage.setItem("wc26_gm",JSON.stringify(gm));localStorage.setItem("wc26_ko",JSON.stringify(ko));localStorage.setItem("wc26_slog",JSON.stringify(slog));localStorage.setItem("wc26_play_mode",playMode);/* tab not saved */localStorage.setItem("wc26_expG",expG||"");}catch(e){}}
+function saveState(){if(isViewMode)return;try{localStorage.setItem("wc26_gm",JSON.stringify(gm));localStorage.setItem("wc26_ko",JSON.stringify(ko));localStorage.setItem("wc26_slog",JSON.stringify(slog));localStorage.setItem("wc26_play_mode",playMode);/* tab not saved */localStorage.setItem("wc26_expG",expG||"");}catch(e){}syncToBackend();}
 function loadState(){
   try{
-    // ── First: check URL hash for shared prediction ──
+    // ── First: check URL param ?load=<prediction_id> for backend load ──
+    var params=new URLSearchParams(location.search);
+    var loadId=params.get("load");
+    if(loadId&&API_BASE){
+      loadFromBackend(loadId);
+      return; // async — loadFromBackend calls render() when done
+    }
+    // ── Next: check URL hash for shared prediction ──
     var hash=window.location.hash;
     if(hash&&hash.indexOf("#p=")===0){
       if(deserializeState(hash.substring(3))){
@@ -810,6 +829,73 @@ function loadState(){
     /* Prime celebration tracker so reopening the page doesn't re-fire confetti for a champion saved last session */
     if(ko&&ko["FINAL"]&&ko["FINAL"].w)lastCelebratedChamp=ko["FINAL"].w;
   }catch(e){}
+}
+// ─── BACKEND SYNC ───
+var _syncTimer=null;
+function syncToBackend(){
+  if(!API_BASE)return;
+  clearTimeout(_syncTimer);
+  _syncTimer=setTimeout(function(){
+    var id=localStorage.getItem("wc26_backend_id");
+    var payload={gm:gm,ko:ko,slog:slog,play_mode:playMode,encoded:serializeState()};
+    if(id)payload.id=id;
+    fetch(API_BASE+"/predictions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
+    }).then(function(r){return r.json();})
+      .then(function(data){if(data.id)localStorage.setItem("wc26_backend_id",data.id);})
+      .catch(function(){/* backend unavailable — silent fallback */});
+  },2000);
+}
+function loadFromBackend(id){
+  if(!API_BASE)return;
+  fetch(API_BASE+"/predictions/"+encodeURIComponent(id))
+    .then(function(r){if(!r.ok)throw new Error("not_found");return r.json();})
+    .then(function(data){
+      gm=data.gm;ko=data.ko;slog=data.slog||[];
+      playMode=data.play_mode||"normal";
+      if(ko&&ko.FINAL&&ko.FINAL.w)lastCelebratedChamp=ko.FINAL.w;
+      localStorage.setItem("wc26_backend_id",data.id);
+      // Mirror to localStorage so offline fallback works
+      try{
+        localStorage.setItem("wc26_gm",JSON.stringify(gm));
+        localStorage.setItem("wc26_ko",JSON.stringify(ko));
+        localStorage.setItem("wc26_slog",JSON.stringify(slog));
+        localStorage.setItem("wc26_play_mode",playMode);
+      }catch(e){}
+      isViewMode=true;
+      document.body.classList.add("view-mode");
+      showViewBanner();
+      render();
+    }).catch(function(){
+      showToast(T("backendLoadFailed")||"Prediction not found or server unreachable");
+    });
+}
+function checkBackendHealth(){
+  if(!API_BASE)return;
+  fetch(API_BASE+"/health")
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var dot=document.getElementById("serverDot");
+      if(dot){
+        if(d.status==="ok"){dot.classList.add("on");dot.title=T("backendOnline")||"Server connected";}
+        else{dot.classList.remove("on");dot.title=T("backendOffline")||"Server disconnected";}
+      }
+    }).catch(function(){
+      var dot=document.getElementById("serverDot");
+      if(dot){dot.classList.remove("on");dot.title=T("backendOffline")||"Server disconnected";}
+    });
+}
+function showToast(msg){
+  var existing=document.getElementById("toast");
+  if(existing)existing.remove();
+  var t=document.createElement("div");
+  t.id="toast";
+  t.style.cssText="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink-dark);color:var(--bg-card);padding:12px 24px;border-radius:100px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.2);animation:fadeInUp 0.3s ease";
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity="0";t.style.transition="opacity 0.3s";setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},300);},3000);
 }
 // ─── SHARED-PREDICTION STATE ENCODING ───
 // Lets a friend open a URL like  https://site/#p=<encoded>  and see your prediction.
@@ -1256,7 +1342,27 @@ function copyShareLink(){
     navigator.clipboard.writeText(url).then(done).catch(fail);
   }else{fail();}
 }
-function clearState(){localStorage.removeItem("wc26_gm");localStorage.removeItem("wc26_ko");localStorage.removeItem("wc26_slog");localStorage.removeItem("wc26_tab");localStorage.removeItem("wc26_expG");gm=initGM();ko={};slog=[];tab="groups";expG=null;render();}
+function copyBackendId(){
+  var id=localStorage.getItem("wc26_backend_id");
+  if(!id)return;
+  var url=location.origin+location.pathname+"?load="+id;
+  var btn=document.getElementById("copyIdBtn");
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){
+      if(btn){var old=btn.innerHTML;btn.innerHTML=T("idCopied");btn.disabled=true;
+      setTimeout(function(){if(btn){btn.innerHTML=old;btn.disabled=false;}},2000);}
+    }).catch(function(){/* fallback below */});
+  }else{
+    var ta=document.createElement("textarea");
+    ta.value=url;ta.style.position="fixed";ta.style.top="-9999px";
+    document.body.appendChild(ta);ta.focus();ta.select();
+    try{document.execCommand("copy");}catch(e){}
+    document.body.removeChild(ta);
+    if(btn){var o=btn.innerHTML;btn.innerHTML=T("idCopied");btn.disabled=true;
+    setTimeout(function(){if(btn){btn.innerHTML=o;btn.disabled=false;}},2000);}
+  }
+}
+function clearState(){localStorage.removeItem("wc26_gm");localStorage.removeItem("wc26_ko");localStorage.removeItem("wc26_slog");localStorage.removeItem("wc26_tab");localStorage.removeItem("wc26_expG");localStorage.removeItem("wc26_backend_id");gm=initGM();ko={};slog=[];tab="groups";expG=null;render();}
 function modeControl(){
   var modes=[
     {k:"normal",zh:"普通模式",en:"Normal"},
@@ -1366,6 +1472,8 @@ var I18N={
     sharingDesc:"正在渲染淘汰赛对阵海报",
     btnCopyLink:"🔗 复制分享链接",linkCopied:"✓ 已复制!",linkFailed:"复制失败",
     viewModeText:"这是一份分享的预测",viewModeAction:"我也来预测一份",
+    backendOnline:"服务器已连接",backendOffline:"服务器未连接",backendLoadFailed:"预测未找到或服务器不可用",
+    backendIdLabel:"预测 ID",btnCopyId:"📋 复制 ID",idCopied:"✓ ID 已复制！",
     posterModalTitle:"长按保存海报",btnDownloadPoster:"💾 下载海报",btnCloseModal:"关闭",
     groupMatchesTitle:"⚽ {g}组 · 比赛 & 比分",
     pickManually:"🎯 改为手动选择进球",
@@ -1418,6 +1526,8 @@ var I18N={
     sharingDesc:"Rendering the knockout image",
     btnCopyLink:"🔗 Copy share link",linkCopied:"✓ Copied!",linkFailed:"Copy failed",
     viewModeText:"You're viewing a shared prediction",viewModeAction:"Make your own prediction",
+    backendOnline:"Server connected",backendOffline:"Server disconnected",backendLoadFailed:"Prediction not found or server unreachable",
+    backendIdLabel:"Prediction ID",btnCopyId:"📋 Copy ID",idCopied:"✓ ID copied!",
     posterModalTitle:"Long-press to save",btnDownloadPoster:"💾 Download poster",btnCloseModal:"Close",
     groupMatchesTitle:"⚽ Group {g} · Matches & Scores",
     pickManually:"🎯 Pick scorers manually",
@@ -1445,6 +1555,7 @@ function applyI18N(){
   var sk=document.getElementById("skipBtn");if(sk)sk.title=T("ttSkip");
   var mu=document.getElementById("musicBtn");if(mu)mu.title=T("ttMusic");
   var th=document.getElementById("themeBtn");if(th)th.title=T("ttTheme");
+  var sd=document.getElementById("serverDot");if(sd){sd.title=sd.classList.contains("on")?T("backendOnline"):T("backendOffline");}
 }
 function toggleLang(){LANG=LANG==="zh"?"en":"zh";localStorage.setItem("wc26_lang",LANG);document.documentElement.lang=(LANG==="zh")?"zh-CN":"en";applyI18N();render();}
 applyI18N();
@@ -2033,8 +2144,8 @@ function aG(player,team,phase,gk,mi,side,assist,force){
 }
 function cM(){document.getElementById("modal-root").innerHTML="";}
 
-document.addEventListener("DOMContentLoaded",function(){render();fetchActualResults();});
-if(document.readyState!=="loading"){render();fetchActualResults();}
+document.addEventListener("DOMContentLoaded",function(){render();fetchActualResults();checkBackendHealth();});
+if(document.readyState!=="loading"){render();fetchActualResults();checkBackendHealth();}
 
 
 
@@ -2422,7 +2533,14 @@ function buildPosterHTML(champ){
     }).then(function(canvas){
       document.body.removeChild(wrap);
       var imgUrl=canvas.toDataURL("image/png");
-      mr.innerHTML='<div class="modal-bg" onclick="cM()"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px;text-align:center;padding:24px"><h3 style="margin:0 0 12px">'+T("posterModalTitle")+' <button onclick="cM()">✕</button></h3><div style="overflow:auto;max-height:60vh;border-radius:12px;border:1px solid var(--line-delicate)"><img src="'+imgUrl+'" style="width:100%;display:block"></div><div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><a href="'+imgUrl+'" download="worldcup2026-prediction.png" style="padding:11px 20px;background:var(--ink-dark);color:var(--bg-card);border-radius:100px;text-decoration:none;font-weight:700;font-size:13px">'+T("btnDownloadPoster")+'</a><button id="copyShareLinkBtn" onclick="copyShareLink()" style="padding:11px 20px;background:#E5C26A;color:#07110C;border:none;border-radius:100px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">'+T("btnCopyLink")+'</button><button class="b" onclick="cM()">'+T("btnCloseModal")+'</button></div></div></div>';
+      mr.innerHTML='<div class="modal-bg" onclick="cM()"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px;text-align:center;padding:24px"><h3 style="margin:0 0 12px">'+T("posterModalTitle")+' <button onclick="cM()">✕</button></h3><div style="overflow:auto;max-height:60vh;border-radius:12px;border:1px solid var(--line-delicate)"><img src="'+imgUrl+'" style="width:100%;display:block"></div><div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><a href="'+imgUrl+'" download="worldcup2026-prediction.png" style="padding:11px 20px;background:var(--ink-dark);color:var(--bg-card);border-radius:100px;text-decoration:none;font-weight:700;font-size:13px">'+T("btnDownloadPoster")+'</a><button id="copyShareLinkBtn" onclick="copyShareLink()" style="padding:11px 20px;background:#E5C26A;color:#07110C;border:none;border-radius:100px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">'+T("btnCopyLink")+'</button><button class="b" onclick="cM()">'+T("btnCloseModal")+'</button></div><div id="backendIdSection" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-delicate);display:none"><span style="font-size:12px;color:var(--ink-light)">'+T("backendIdLabel")+': </span><code id="backendIdCode" style="font-size:13px;font-weight:600;background:var(--bg-soft);padding:3px 8px;border-radius:6px"></code><button id="copyIdBtn" onclick="copyBackendId()" style="margin-left:8px;padding:6px 14px;background:var(--bg-soft);color:var(--ink-dark);border:1px solid var(--line-delicate);border-radius:100px;font-weight:600;font-size:12px;cursor:pointer;font-family:inherit">'+T("btnCopyId")+'</button></div></div></div>';
+	      // Show backend ID section if we have one
+	      setTimeout(function(){
+	        var bid=localStorage.getItem("wc26_backend_id");
+	        var sec=document.getElementById("backendIdSection");
+	        var code=document.getElementById("backendIdCode");
+	        if(bid&&sec&&code&&API_BASE){sec.style.display="block";code.textContent=bid;}
+	      },50);
     }).catch(function(e){
       if(wrap.parentNode)wrap.parentNode.removeChild(wrap);
       mr.innerHTML='<div class="modal-bg" onclick="cM()"><div class="modal" style="text-align:center;padding:40px" onclick="event.stopPropagation()"><p style="color:red">'+T("shareGenFail")+e.message+'</p><button class="b" onclick="cM()" style="margin-top:16px">'+T("btnCloseModal")+'</button></div></div>';
