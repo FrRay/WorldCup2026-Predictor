@@ -1321,9 +1321,15 @@ function applyViewModeLockdown(){
   }
 }
 function copyShareLink(){
-  var encoded=serializeState();
-  if(!encoded){alert(T("linkFailed"));return;}
-  var url=location.origin+location.pathname+"#p="+encoded;
+  var bid=localStorage.getItem("wc26_backend_id");
+  var url;
+  if(bid&&API_BASE){
+    url=location.origin+location.pathname+"?load="+bid;
+  }else{
+    var encoded=serializeState();
+    if(!encoded){alert(T("linkFailed"));return;}
+    url=location.origin+location.pathname+"#p="+encoded;
+  }
   var btn=document.getElementById("copyShareLinkBtn");
   var done=function(){
     if(!btn)return;
@@ -2273,8 +2279,12 @@ function qrBytes(s){
 function getShareUrl(){
   try{
     if(location&&/^https?:$/.test(location.protocol)){
-      var u=location.origin+location.pathname;
-      if(qrBytes(u).length<=53)return u;
+      // Prefer backend prediction ID (short, clean QR) when available
+      var bid=localStorage.getItem("wc26_backend_id");
+      if(bid&&API_BASE)return location.origin+location.pathname+"?load="+bid;
+      // Fall back to #p= encoded state
+      var encoded=serializeState();
+      if(encoded)return location.origin+location.pathname+"#p="+encoded;
     }
   }catch(e){}
   return SHARE_QR_URL;
@@ -2441,7 +2451,7 @@ function buildPosterHTML(champ){
   try{qrHTML=makeQRHTML(url);}catch(e){qrHTML='<div class="qr-grid"></div>';}
   var topTag=en?"2026 FIFA WORLD CUP · MY PICK":"2026 FIFA WORLD CUP · 我的预测";
   var topTitle=en?"United · Mexico · Canada":"美加墨世界杯";
-  var footerNotice=en?"Scan to make yours":"扫码生成你的预测";
+  var footerNotice=en?"Scan to view mine":"扫码查看我的预测";
   var h='<div class="poster">';
   h+='<div class="poster-top">';
   h+='<div class="poster-tag">'+escHtml(topTag)+'</div>';
@@ -2476,7 +2486,8 @@ function buildPosterHTML(champ){
   h+='<div class="poster-conclusion" style="font-size:'+tlFont+'px">'+escHtml(tagline)+'</div>';
   h+='<div class="poster-footer">';
   h+='<div class="footer-left">';
-  h+='<div class="footer-url">gmliangjz.github.io/WorldCup2026-Predictor</div>';
+  var bid=localStorage.getItem("wc26_backend_id");
+  h+='<div class="footer-url">'+(bid&&API_BASE?bid:"gmliangjz.github.io/WorldCup2026-Predictor")+'</div>';
   h+='<div class="footer-notice">'+escHtml(footerNotice)+'</div>';
   h+='</div>';
   h+='<div class="footer-right">'+qrHTML+'</div>';
