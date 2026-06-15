@@ -318,9 +318,8 @@ body.dark .toast{background:rgba(255,255,255,0.9);color:#121417}
 .poster .footer-notice{font-size:11px;color:#7A8E83;letter-spacing:0.3px}
 /* QR: explicit grid-auto-rows:1fr is the critical fix — without it, empty <i> elements
    collapse rows to 0 height and the entire QR renders as a blank white square. */
-.poster .footer-right .qr-grid{width:88px;height:88px;background:#fff;padding:6px;border-radius:4px;display:grid;grid-auto-rows:1fr}
-.poster .footer-right .qr-grid i{display:block;background:#fff}
-.poster .footer-right .qr-grid i.on{background:#07110C}
+.poster .footer-right .poster-qr-wrap{width:88px;height:88px}
+/* qrcodejs renders a canvas/img inside; match the old QR grid sizing */
 
 /* ─── LOGO (header trophy badge) ─── */
 .hdr h1 .logo{width:44px;height:44px;flex-shrink:0;filter:drop-shadow(0 2px 4px rgba(229,194,106,0.18))}
@@ -489,6 +488,7 @@ body.view-mode .mode-row{margin:18px 0 24px!important}
 .history-date{margin-left:auto;color:var(--ink-light);font-size:11px;font-family:"SF Mono","Menlo","Consolas",monospace}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
@@ -2270,115 +2270,17 @@ function revealChampionPath(){
   })(cp.route[stageIdx],stageIdx*260);}
 }
 
-// ── SHARE QR + CARD GENERATOR ──
-var SHARE_QR_URL="https://gmliangjz.github.io/WorldCup2026-Predictor/";
-function qrBytes(s){
-  if(typeof TextEncoder!=="undefined")return Array.prototype.slice.call(new TextEncoder().encode(s));
-  var out=[];for(var i=0;i<s.length;i++)out.push(s.charCodeAt(i)&255);return out;
-}
+// ── SHARE URL GENERATOR ──
 function getShareUrl(){
   try{
     if(location&&/^https?:$/.test(location.protocol)){
-      // Prefer backend prediction ID (short, clean QR) when available
       var bid=localStorage.getItem("wc26_backend_id");
       if(bid&&API_BASE)return location.origin+location.pathname+"?load="+bid;
-      // Fall back to #p= encoded state
       var encoded=serializeState();
       if(encoded)return location.origin+location.pathname+"#p="+encoded;
     }
   }catch(e){}
-  return SHARE_QR_URL;
-}
-function qrGfMul(x,y){
-  var z=0;
-  while(y){if(y&1)z^=x;x<<=1;if(x&256)x^=0x11D;y>>=1;}
-  return z;
-}
-function qrRsDivisor(degree){
-  var result=[1],root=1;
-  for(var i=0;i<degree;i++){
-    result.push(0);
-    for(var j=0;j<result.length-1;j++)result[j]=qrGfMul(result[j],root)^result[j+1];
-    result[result.length-1]=qrGfMul(result[result.length-1],root);
-    root=qrGfMul(root,2);
-  }
-  return result.slice(0,degree);
-}
-function qrRsRemainder(data,degree){
-  var divisor=qrRsDivisor(degree),result=[];
-  for(var i=0;i<degree;i++)result.push(0);
-  for(i=0;i<data.length;i++){
-    var factor=data[i]^result.shift();
-    result.push(0);
-    for(var j=0;j<degree;j++)result[j]^=qrGfMul(divisor[j],factor);
-  }
-  return result;
-}
-function qrFormatBits(ecLevel,mask){
-  var data=(ecLevel<<3)|mask,rem=data<<10;
-  for(var i=14;i>=10;i--)if((rem>>i)&1)rem^=0x537<<(i-10);
-  return ((data<<10)|(rem&0x3FF))^0x5412;
-}
-function makeQRMatrix(text){
-  var bytes=qrBytes(text);
-  if(bytes.length>53)bytes=qrBytes(SHARE_QR_URL);
-  var size=29,dataCW=55,ecCW=15,bits=[];
-  function put(v,n){for(var i=n-1;i>=0;i--)bits.push((v>>i)&1);}
-  put(4,4);put(bytes.length,8);
-  for(var i=0;i<bytes.length;i++)put(bytes[i],8);
-  var cap=dataCW*8,term=Math.min(4,cap-bits.length);
-  put(0,term);
-  while(bits.length%8)bits.push(0);
-  var data=[];
-  for(i=0;i<bits.length;i+=8){var b=0;for(var j=0;j<8;j++)b=(b<<1)|bits[i+j];data.push(b);}
-  for(i=0;data.length<dataCW;i++)data.push(i%2?0x11:0xEC);
-  var codewords=data.concat(qrRsRemainder(data,ecCW));
-  var m=[],reserved=[];
-  for(var r=0;r<size;r++){m[r]=[];reserved[r]=[];for(var c=0;c<size;c++){m[r][c]=false;reserved[r][c]=false;}}
-  function set(r,c,v,res){if(r<0||c<0||r>=size||c>=size)return;m[r][c]=!!v;if(res)reserved[r][c]=true;}
-  function finder(y,x){
-    for(var rr=-1;rr<=7;rr++)for(var cc=-1;cc<=7;cc++){
-      var on=rr>=0&&rr<7&&cc>=0&&cc<7&&(rr===0||rr===6||cc===0||cc===6||(rr>=2&&rr<=4&&cc>=2&&cc<=4));
-      set(y+rr,x+cc,on,true);
-    }
-  }
-  finder(0,0);finder(0,size-7);finder(size-7,0);
-  for(i=8;i<size-8;i++){set(6,i,i%2===0,true);set(i,6,i%2===0,true);}
-  for(r=-2;r<=2;r++)for(c=-2;c<=2;c++)set(22+r,22+c,Math.max(Math.abs(r),Math.abs(c))===2||(r===0&&c===0),true);
-  for(i=0;i<9;i++){if(i!==6){set(8,i,false,true);set(i,8,false,true);}}
-  for(i=0;i<8;i++)set(8,size-1-i,false,true);
-  for(i=8;i<15;i++)set(size-15+i,8,false,true);
-  set(21,8,true,true);
-  var bit=0,dir=-1;
-  for(c=size-1;c>0;c-=2){
-    if(c===6)c--;
-    for(r=dir<0?size-1:0;r>=0&&r<size;r+=dir){
-      for(j=0;j<2;j++){
-        var col=c-j;
-        if(!reserved[r][col]){
-          var val=bit<codewords.length*8?((codewords[Math.floor(bit/8)]>>(7-bit%8))&1):0;
-          set(r,col,!!(val^(((r+col)%2)===0)),false);
-          bit++;
-        }
-      }
-    }
-    dir=-dir;
-  }
-  var fb=qrFormatBits(1,0);
-  function fbit(i){return ((fb>>i)&1)!==0;}
-  for(i=0;i<6;i++)set(i,8,fbit(i),true);
-  set(7,8,fbit(6),true);set(8,8,fbit(7),true);set(8,7,fbit(8),true);
-  for(i=9;i<15;i++)set(8,14-i,fbit(i),true);
-  for(i=0;i<8;i++)set(8,size-1-i,fbit(i),true);
-  for(i=8;i<15;i++)set(size-15+i,8,fbit(i),true);
-  var border=4,out=[];
-  for(r=-border;r<size+border;r++){var row=[];for(c=-border;c<size+border;c++)row.push(r>=0&&c>=0&&r<size&&c<size?m[r][c]:false);out.push(row);}
-  return out;
-}
-function makeQRHTML(text){
-  var matrix=makeQRMatrix(text),n=matrix.length,html='<div class="qr-grid" style="grid-template-columns:repeat('+n+',1fr)">';
-  for(var r=0;r<n;r++)for(var c=0;c<n;c++)html+='<i'+(matrix[r][c]?' class="on"':'')+'></i>';
-  return html+'</div>';
+  return "https://gmliangjz.github.io/WorldCup2026-Predictor/";
 }
 // ─── POSTER SHARE: champion path + HTML builder ───
 // Walks ko[] from R32→FINAL collecting the champion's 5 winning matches.
@@ -2446,9 +2348,7 @@ function buildPosterHTML(champ){
   // Dynamic font: 292/vw is the largest size that fits, capped at 96, floored at 28,
   // rounded to even integers for visual cleanliness. Always fits — no ladder, no overflow.
   var champFontSize = Math.min(96, Math.max(28, Math.floor(292/vw/2)*2));
-  var url=getShareUrl();
-  var qrHTML="";
-  try{qrHTML=makeQRHTML(url);}catch(e){qrHTML='<div class="qr-grid"></div>';}
+  var qrHTML='<div class="poster-qr-wrap"></div>';
   var topTag=en?"2026 FIFA WORLD CUP · MY PICK":"2026 FIFA WORLD CUP · 我的预测";
   var topTitle=en?"United · Mexico · Canada":"美加墨世界杯";
   var footerNotice=en?"Scan to view mine":"扫码查看我的预测";
@@ -2533,7 +2433,12 @@ function buildPosterHTML(champ){
   wrap.style.cssText="position:fixed;left:-99999px;top:0;width:540px;height:810px;z-index:-9999;";
   wrap.innerHTML=buildPosterHTML(champ);
   document.body.appendChild(wrap);
-  // Brief delay lets flag images start loading before capture
+  // Generate real QR code via qrcodejs library
+  var qrEl=wrap.querySelector(".poster-qr-wrap");
+  if(qrEl&&typeof QRCode!=="undefined"){
+    try{new QRCode(qrEl,{text:getShareUrl(),width:88,height:88,correctLevel:QRCode.CorrectLevel.L});}catch(e){}
+  }
+  // Brief delay lets QR render and flag images start loading before capture
   setTimeout(function(){
     html2canvas(wrap.firstChild,{
       scale:2,
