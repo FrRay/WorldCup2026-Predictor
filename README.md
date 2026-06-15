@@ -68,43 +68,147 @@ A self-hostable simulator for the 2026 FIFA World Cup. Predict from the group st
 
 ### 🚀 Quick Start
 
-#### Option 1 — Static (GitHub Pages / local file)
+Pick the path that fits you:
 
-```bash
-git clone https://github.com/FrRay/WorldCup2026-Predictor.git
-cd WorldCup2026-Predictor
-python -m http.server 8000
-```
+| You want… | Choose |
+|---|---|
+| Just try it, nothing to install | [Option 1](#option-1--static-file-zero-dependencies) |
+| Full backend for real, easiest way | [Option 2](#option-2--docker-compose-recommended) |
+| Full backend without Docker | [Option 3](#option-3--manual-without-docker) |
 
-Open `http://localhost:8000`. Works standalone via `localStorage` — no backend needed.
+---
 
-#### Option 2 — Self-Hosted Server (Docker Compose)
+#### Option 1 — Static File (Zero Dependencies)
 
-```bash
-git clone https://github.com/FrRay/WorldCup2026-Predictor.git
-cd WorldCup2026-Predictor
-docker compose up -d
-```
+No server, no database — just open a file. Predictions stay in your browser's localStorage.
 
-Open `http://localhost:3000`. Predictions persist in MySQL and are shareable across devices via a 12-character prediction ID.
+1. **Download the project**
 
-#### Option 3 — Manual Server (Node.js + existing MySQL)
+   If you have git:
+   ```bash
+   git clone https://github.com/FrRay/WorldCup2026-Predictor.git
+   cd WorldCup2026-Predictor
+   ```
 
-```bash
-cd WorldCup2026-Predictor/server
-npm install
+   Or without git: click the green **Code** button on the repo page → **Download ZIP** → unzip anywhere.
 
-# Point to your MySQL instance
-export DB_HOST=localhost DB_USER=wc26 DB_PASSWORD=wc26pass DB_NAME=wc26_predictor PORT=3000
+2. **Open `index.html`** — double-click it in your file explorer.
 
-# Create the table
-mysql -u wc26 -p wc26_predictor < init.sql
+That's it. You can also serve it through any static server (Python, nginx, VS Code Live Server, etc.) — the app is a single HTML file.
 
-# Start
-node server.js
-```
+> ⚠️ With this option, predictions only live in **one browser**. Clear your browser data and they're gone.
 
-Open `http://localhost:3000`. The status dot in the top-right turns green when the backend is connected.
+---
+
+#### Option 2 — Docker Compose (Recommended)
+
+This gives you the full backend: predictions saved in MySQL, shareable across devices via a prediction ID, QR codes that actually work. You need **Docker Desktop** or **Docker Engine** installed first ([download here](https://docs.docker.com/get-docker/)).
+
+1. **Get the code**
+
+   ```bash
+   git clone https://github.com/FrRay/WorldCup2026-Predictor.git
+   cd WorldCup2026-Predictor
+   ```
+
+   (No git? Click **Code → Download ZIP** on the repo page, unzip, open a terminal in that folder.)
+
+2. **One command**
+
+   ```bash
+   docker compose up -d
+   ```
+
+   Docker will pull MySQL and Node.js images, create the database, and start everything. Wait about 30 seconds on first run (MySQL needs time to initialize).
+
+3. **Open your browser** to `http://localhost:3000`
+
+   You should see the predictor with a **green dot** in the top-right corner — that means the backend is connected.
+
+4. **Make a prediction**, then check that it was saved:
+
+   ```bash
+   docker compose exec db mysql -u wc26 -pwc26pass wc26_predictor \
+     -e "SELECT id, champion, updated_at FROM predictions;"
+   ```
+
+5. **To stop**: `docker compose down`. Data survives in the `mysql_data` volume — `docker compose up -d` brings everything back.
+
+> 💡 **Deploying to a cloud server?**
+> Upload the project to your server, run `docker compose up -d`, and set the `PORT` environment variable to match your reverse proxy (e.g. `PORT=8848 docker compose up -d`). If you're behind an HTTP proxy like Nginx or a cloud tunnel, point it to the port Node is listening on (default: 3000).
+
+---
+
+#### Option 3 — Manual (Without Docker)
+
+You already have Node.js (v18+) and MySQL 8.0 running. This is the path for servers or developers.
+
+**Prerequisites**: Node.js ≥18, MySQL 8.0 running with a database ready.
+
+1. **Get the code** (clone or download ZIP)
+
+   ```bash
+   git clone https://github.com/FrRay/WorldCup2026-Predictor.git
+   cd WorldCup2026-Predictor/server
+   ```
+
+2. **Install dependencies**
+
+   ```bash
+   npm install
+   ```
+
+3. **Create the database and table**
+
+   ```bash
+   # Log into MySQL as root and set up a user + database
+   mysql -u root -p -e "
+     CREATE DATABASE IF NOT EXISTS wc26_predictor CHARACTER SET utf8mb4;
+     CREATE USER IF NOT EXISTS 'wc26'@'localhost' IDENTIFIED BY 'wc26pass';
+     GRANT ALL PRIVILEGES ON wc26_predictor.* TO 'wc26'@'localhost';
+     FLUSH PRIVILEGES;
+   "
+
+   # Run the schema
+   mysql -u wc26 -pwc26pass wc26_predictor < init.sql
+   ```
+
+4. **Configure environment variables**
+
+   | Variable | Default | What it is |
+   |---|---|---|
+   | `DB_HOST` | `localhost` | MySQL host |
+   | `DB_PORT` | `3306` | MySQL port |
+   | `DB_USER` | `wc26` | MySQL user |
+   | `DB_PASSWORD` | `wc26pass` | MySQL password |
+   | `DB_NAME` | `wc26_predictor` | Database name |
+   | `PORT` | `3000` | Port the server listens on |
+
+   Change any that differ from the defaults. On Linux/macOS:
+
+   ```bash
+   export DB_HOST=localhost DB_USER=wc26 DB_PASSWORD=wc26pass DB_NAME=wc26_predictor PORT=3000
+   ```
+
+   On Windows PowerShell:
+
+   ```powershell
+   $env:DB_HOST="localhost"; $env:DB_USER="wc26"; $env:DB_PASSWORD="wc26pass"; $env:DB_NAME="wc26_predictor"; $env:PORT="3000"
+   ```
+
+5. **Start the server**
+
+   ```bash
+   node server.js
+   ```
+
+   You should see: `World Cup Predictor server on http://localhost:3000`
+
+6. **Open** `http://localhost:3000` — green dot = connected.
+
+7. **Make it survive reboots** (Linux/systemd)
+
+   See the [`server/wc26-predictor.service`](server/) example. Copy it to `/etc/systemd/system/`, edit the paths and env vars for your machine, then `systemctl enable --now wc26-predictor`.
 
 ### 🛠 Tech Stack
 
@@ -235,41 +339,147 @@ MIT — see [LICENSE](LICENSE). Third-party assets (flags, photos, taglines): [N
 
 ### 🚀 快速开始
 
-#### 方式一 — 静态文件（GitHub Pages / 本地双击）
+根据你的情况选择一种方式：
 
-```bash
-git clone https://github.com/FrRay/WorldCup2026-Predictor.git
-cd WorldCup2026-Predictor
-python -m http.server 8000
-```
+| 你想… | 选哪个 |
+|---|---|
+| 先试试看，不想装任何东西 | [方式一](#方式一--纯静态文件零依赖) |
+| 完整后端，最简单的方式 | [方式二](#方式二--docker-compose推荐) |
+| 完整后端，不用 Docker | [方式三](#方式三--手动部署不用-docker) |
 
-打开 `http://localhost:8000`。纯 localStorage 模式，不需后端。
+---
 
-#### 方式二 — 自部署服务器（Docker Compose，推荐）
+#### 方式一 — 纯静态文件（零依赖）
 
-```bash
-git clone https://github.com/FrRay/WorldCup2026-Predictor.git
-cd WorldCup2026-Predictor
-docker compose up -d
-```
+不需要服务器、不需要数据库——直接打开一个文件就能用。预测记录保存在浏览器的 localStorage 里。
 
-打开 `http://localhost:3000`。预测存入 MySQL，通过 12 位预测 ID 跨设备分享。
+1. **下载项目**
 
-#### 方式三 — 手动部署（Node.js + 已有 MySQL）
+   有 git 的话：
+   ```bash
+   git clone https://github.com/FrRay/WorldCup2026-Predictor.git
+   cd WorldCup2026-Predictor
+   ```
 
-```bash
-cd WorldCup2026-Predictor/server
-npm install
+   没有 git？在仓库页面点绿色的 **Code** 按钮 → **Download ZIP** → 解压到任意文件夹。
 
-# 指向你的 MySQL 实例
-export DB_HOST=localhost DB_USER=wc26 DB_PASSWORD=wc26pass DB_NAME=wc26_predictor PORT=3000
+2. **双击打开 `index.html`**
 
-# 建表
-mysql -u wc26 -p wc26_predictor < init.sql
+   就这么简单。你也可以用任意静态服务器托管它（Python、nginx、VS Code Live Server 都可以），因为整个应用就是一个 HTML 文件。
 
-# 启动
-node server.js
-```
+> ⚠️ 这种方式下，预测只保存在**当前浏览器**里。清缓存或换浏览器就没了。
+
+---
+
+#### 方式二 — Docker Compose（推荐）
+
+这种方式给你完整后端：预测存入 MySQL、可以跨设备同步、海报上的二维码是真的。前提：你的电脑上已经装了 **Docker Desktop** 或 **Docker Engine**（[点这里下载](https://docs.docker.com/get-docker/)）。
+
+1. **获取代码**
+
+   ```bash
+   git clone https://github.com/FrRay/WorldCup2026-Predictor.git
+   cd WorldCup2026-Predictor
+   ```
+
+   （没有 git？仓库页点 **Code → Download ZIP**，解压后在那个文件夹里打开终端。）
+
+2. **一条命令启动**
+
+   ```bash
+   docker compose up -d
+   ```
+
+   Docker 会自动拉取 MySQL 和 Node.js 镜像、创建数据库表、启动服务。首次运行等一下（MySQL 初始化大约 30 秒）。
+
+3. **打开浏览器**访问 `http://localhost:3000`
+
+   右上角应该出现一个**绿色小圆点**——说明后端已连接。
+
+4. **随便预测几场**，然后验证数据已经写入数据库：
+
+   ```bash
+   docker compose exec db mysql -u wc26 -pwc26pass wc26_predictor \
+     -e "SELECT id, champion, updated_at FROM predictions;"
+   ```
+
+5. **停止服务**：`docker compose down`。数据保存在 `mysql_data` 卷里不会丢，再跑 `docker compose up -d` 就全部恢复。
+
+> 💡 **部署到云服务器？**
+> 把项目上传到服务器，跑 `docker compose up -d`，然后在启动命令前设置 `PORT` 环境变量来匹配你的反向代理端口（例如 `PORT=8848 docker compose up -d`）。如果你在 Nginx 或云隧道后面，把域名指向 Node 监听的端口（默认 3000）即可。
+
+---
+
+#### 方式三 — 手动部署（不用 Docker）
+
+你已经有一台装了 Node.js（≥18）和 MySQL 8.0 的机器。适合在服务器上部署或开发者自己折腾。
+
+**前提**：Node.js ≥18 已安装，MySQL 8.0 已启动。
+
+1. **获取代码**（clone 或下载 ZIP）
+
+   ```bash
+   git clone https://github.com/FrRay/WorldCup2026-Predictor.git
+   cd WorldCup2026-Predictor/server
+   ```
+
+2. **安装依赖**
+
+   ```bash
+   npm install
+   ```
+
+3. **创建数据库和表**
+
+   ```bash
+   # 用 root 登录 MySQL，创建用户和数据库
+   mysql -u root -p -e "
+     CREATE DATABASE IF NOT EXISTS wc26_predictor CHARACTER SET utf8mb4;
+     CREATE USER IF NOT EXISTS 'wc26'@'localhost' IDENTIFIED BY 'wc26pass';
+     GRANT ALL PRIVILEGES ON wc26_predictor.* TO 'wc26'@'localhost';
+     FLUSH PRIVILEGES;
+   "
+
+   # 建表
+   mysql -u wc26 -pwc26pass wc26_predictor < init.sql
+   ```
+
+4. **配置环境变量**
+
+   | 变量 | 默认值 | 说明 |
+   |---|---|---|
+   | `DB_HOST` | `localhost` | MySQL 主机地址 |
+   | `DB_PORT` | `3306` | MySQL 端口 |
+   | `DB_USER` | `wc26` | MySQL 用户名 |
+   | `DB_PASSWORD` | `wc26pass` | MySQL 密码 |
+   | `DB_NAME` | `wc26_predictor` | 数据库名 |
+   | `PORT` | `3000` | 服务器监听端口 |
+
+   把跟你实际环境不一样的值设好。Linux/macOS：
+
+   ```bash
+   export DB_HOST=localhost DB_USER=wc26 DB_PASSWORD=wc26pass DB_NAME=wc26_predictor PORT=3000
+   ```
+
+   Windows PowerShell：
+
+   ```powershell
+   $env:DB_HOST="localhost"; $env:DB_USER="wc26"; $env:DB_PASSWORD="wc26pass"; $env:DB_NAME="wc26_predictor"; $env:PORT="3000"
+   ```
+
+5. **启动服务**
+
+   ```bash
+   node server.js
+   ```
+
+   看到 `World Cup Predictor server on http://localhost:3000` 就说明跑起来了。
+
+6. **打开** `http://localhost:3000`——右上角绿色圆点 = 已连接。
+
+7. **让它在重启后自动启动**（Linux/systemd）
+
+   参见仓库里 [`server/wc26-predictor.service`](server/) 的示例文件。拷贝到 `/etc/systemd/system/`，改好路径和环境变量，然后 `systemctl enable --now wc26-predictor` 即可。
 
 打开 `http://localhost:3000`。右上角出现**绿色小圆点**即表示后端已连接。
 

@@ -1,0 +1,22 @@
+[Unit]
+Description=World Cup 2026 Predictor Server
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/WorldCup2026-Predictor/server
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+Environment=DB_HOST=localhost
+Environment=DB_USER=wc26
+Environment=DB_PASSWORD=wc26pass
+Environment=DB_NAME=wc26_predictor
+Environment=PORT=3000
+
+[Install]
+WantedBy=multi-user.target
